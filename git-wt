@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+
+function usage() {
+    echo "git-wt usage:"
+    echo
+    echo "    git wt                      Show existing worktrees."
+    echo
+    echo "    git wt --help | -h | /?     Show this screen."
+    echo
+    echo "    git wt --rm-all [--force]   Remove the non-main worktrees. Can't remove a"
+    echo "                                worktree if you're in it."
+    echo
+    echo "    git wt --rm [--force] <wt>  Remove the linked worktree (described by commitish"
+    echo "                                or directory)."
+    echo
+    echo "    git wt <name> [path]        If <name> is an exact or unique match to an"
+    echo "                                existing worktree, print that worktree's root"
+    echo "                                on its own line for easy copying (see note"
+    echo "                                on subshells)."
+    echo "                                If <name> is an exact or unique match to a"
+    echo "                                branch or commit-ish that does not have an"
+    echo "                                existing worktree, create a new worktree with"
+    echo "                                the full name at 'path' or at the location of"
+    echo "                                the \$GIT_WT_TMP environment variable (falling"
+    echo "                                back to \$USERPROFILE\\AppData\\local\\Temp or"
+    echo "                                \$TMP)."
+    echo
+    echo "NOTE: If the first word after \`wt\` is a valid \`git worktree\` subcommand, then"
+    echo "this logic will short-circuit to the \`git worktree\` subcommand. So don't name"
+    echo "your branch 'list' :)"
+}
+
+# verify that I'm in a git root (if not in git root... explain and show usage)
+if ! git rev-parse --show-toplevel 2> /dev/null 1>&2; then
+    echo "Not in a git repo right now; this command only works within a git repo"
+    echo
+    usage
+    exit 0
+fi
+
+if [[ $# == 0 ]]; then
+    git worktree list
+elif [[ " add list lock move prune remove repair unlock " =~ " $1 " ]]; then
+    git worktree $@
+elif [[ "$1" == "--help" || "$1" == "-h" || "$1" == "/?" ]]; then
+    usage
+elif [[ "$1" == "--rm-all" ]]; then
+    FORCE_REMOVE=""
+    if [[ "$2" == "--force" ]]; then
+        FORCE_REMOVE="-f"
+    fi
+
+    # Get the root of the git repo of the current directory
+    THIS_ROOT=$(git rev-parse --show-toplevel)
+    MAIN_WORKTREE=$(git worktree list | head -1 | awk '{ print $1 }')
+    cd "$MAIN_WORKTREE"
+
+    if [[ "$MAIN_WORKTREE" != "$THIS_ROOT" ]]; then
+        echo "Removing all but '$THIS_ROOT' because we're under that tree"
+    fi
+
+    for worktree in $(git worktree list | awk 'NR > 1 { print $1 }'); do
+        if [[ "$worktree" != "$THIS_ROOT" ]]; then
+            git worktree remove $FORCE_REMOVE $worktree
+        fi
+    done
+elif [[ "$1" == "--rm" ]]; then
+    shift
+    FORCE_REMOVE=""
+    if [[ "$1" == "--force" ]]; then
+        FORCE_REMOVE="-f"
+        shift
+    fi
+
+    # make sure there are no other variables
+    if [[ $# != 1 ]]; then
+        echo "Need exactly 1 argument after --rm [--force]"
+        usage
+        exit 1
+    fi
+
+    if [[ $(git worktree list | grep "$1" | wc -l) != 1 ]]; then
+        echo "Couldn't find worktree described by '$1'"
+        exit 1
+    fi
+
+    # Get the root of the git repo of the current directory
+    THIS_ROOT=$(git rev-parse --show-toplevel)
+    # make sure that we're not in the main worktree -- can't delete that
+    MAIN_WORKTREE=$(git worktree list | head -1 | awk '{ print $1 }')
+
+    if [[ "$MAIN_WORKTREE" == "$THIS_ROOT" ]]; then
+        echo "Cannot remove main worktree; aborting"
+        exit 1
+    fi
+
+    # delete the subtree
+    git worktree remove $FORCE_REMOVE "$THIS_ROOT"
+else
+    # store worktrees to a variable
+    # check worktrees against list
+    MATCHES=()
+    BRANCHES=()
+    for branch in $(git worktree list | grep "\[" | awk 'BEGIN {FS="["} {print $NF}' | sed 's/.$//'); do
+        BRANCHES+=( "$branch" )
+        # Match anything that our predicate starts with; though break out if it's an exact match
+        if [[ "$branch" == "$1" ]]; then
+            MATCHES+=( "$branch" )
+            break
+        fi
+        if [[ "$branch" == "$1"* ]]; then
+            MATCHES+=( "$branch" )
+        fi
+    done
+
+    # if 2 or more, output them all and bail
+    if [[ ${#MATCHES[@]} > 1 ]]; then
+        echo "Found more than one match for $1: $MATCHES; aborting"
+        exit 1
+    fi
+
+    if [[ ${#MATCHES[@]} == 0 ]]; then
+        # if none match, check commit-ish for validity
+        if ! git describe --all "$1" 2> /dev/null 1>&2; then
+            echo "Couldn't find a match for $1, nor any commit-ish that matches it; aborting"
+            echo "Found existing worktree branches: $BRANCHES"
+            exit 1
+        fi
+
+        # make sure GIT_WT_TMP is set and exists (or fall back to $USERPROFILE (Windows) / $TMP)
+        WT_BASEDIR=""
+        # If we provided a profile for path, use it
+        if [[ $# == 2 ]]; then
+            WT_BASEDIR="$2"
+        else
+            # Otherwise find it in an environment variable, where possible
+            if [[ "$GIT_WT_TMP" != "" ]]; then
+                if ! [[ -d "$GIT_WT_TMP" ]]; then
+                    echo "\$GIT_WT_TMP is set to a non-existent directory; aborting"
+                    exit 1
+                fi
+                WT_BASEDIR="$GIT_WT_TMP/$1"
+            elif [[ "$USERPROFILE" != "" ]]; then
+                USERPROFILE_SUB="$USERPROFILE/AppData/local/Temp"
+                if ! [[ -d $USERPROFILE_SUB ]]; then
+                    echo "\$USERPROFILE is set, but $USERPROFILE_SUB does not exist; aborting"
+                    exit 1
+                fi
+                WT_BASEDIR="$USERPROFILE_SUB/$1"
+            else
+                WT_BASEDIR="$TMP/$1"
+            fi
+        fi
+
+        # cd there (which is only effective in bash if you source this script... sorry Powershell :( )
+        git worktree add "$WT_BASEDIR" "$1"
+        echo "$WT_BASEDIR"
+        cd "$WT_BASEDIR"
+    else
+        # find the directory that matches the branch name and go there
+        WT=$(git worktree list | grep "\[.*$1.*\]" | awk 'BEGIN {FS="["} {print $1}' | sed 's/........$//' | tr -d "[:space:]")
+        echo "$WT"
+        cd "$WT"
+    fi
+
+fi
