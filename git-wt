@@ -13,6 +13,10 @@ function usage() {
     echo "    git wt --rm [--force] <wt>  Remove the linked worktree (described by commitish"
     echo "                                or directory)."
     echo
+    echo "    git wt [add|list|lock|move|prune|remove|repair|unlock]"
+    echo "                                Invoke the given \`git worktree\` subcommand,"
+    echo "                                passing along other arguments."
+    echo
     echo "    git wt <name> [path]        If <name> is an exact or unique match to an"
     echo "                                existing worktree, print that worktree's root"
     echo "                                on its own line for easy copying (see note"
@@ -158,7 +162,7 @@ else
         cd "$WT_BASEDIR"
     else
         # find the directory that matches the branch name and go there
-        WT=$(git worktree list | grep "\[.*$1.*\]" | awk 'BEGIN {FS="["} {print $1}' | sed 's/........$//' | tr -d "[:space:]")
+        WT=$(git worktree list | grep "\[.*$1.*\]" | sed -r 's/\W+\w+\W+$//')
         echo "$WT"
         cd "$WT"
     fi
