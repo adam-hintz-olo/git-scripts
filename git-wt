@@ -131,7 +131,7 @@ else
             exit 1
         fi
 
-        # make sure GIT_WT_TMP is set and exists (or fall back to $USERPROFILE (Windows) / $TMP)
+        # make sure GIT_WT_TMP is set and exists (or fall back to $USERPROFILE (Windows) or $TMP or '/tmp')
         WT_BASEDIR=""
         # If we provided a profile for path, use it
         if [[ $# == 2 ]]; then
@@ -152,7 +152,7 @@ else
                 fi
                 WT_BASEDIR="$USERPROFILE_SUB/$1"
             else
-                WT_BASEDIR="$TMP/$1"
+                WT_BASEDIR="${TMP:-/tmp}/$1"
             fi
         fi
 
