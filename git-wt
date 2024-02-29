@@ -162,7 +162,9 @@ else
         cd "$WT_BASEDIR"
     else
         # find the directory that matches the branch name and go there
-        WT=$(git worktree list | grep "\[.*$1.*\]" | sed -r 's/\W+\w+\W+$//')
+        # We can remove the last 2 fields with awk because the last two fields are SHA and [branch-name]
+        # and we know that neither of those can contain spaces :)
+        WT=$(git worktree list | grep "\[.*$1.*\]" | awk 'NF-=2')
         echo "$WT"
         cd "$WT"
     fi
