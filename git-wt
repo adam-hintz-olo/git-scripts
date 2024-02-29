@@ -56,18 +56,21 @@ elif [[ "$1" == "--rm-all" ]]; then
 
     # Get the root of the git repo of the current directory
     THIS_ROOT=$(git rev-parse --show-toplevel)
-    MAIN_WORKTREE=$(git worktree list | head -1 | awk '{ print $1 }')
+    MAIN_WORKTREE=$(git worktree list | head -1 | awk 'NF-=2')
     cd "$MAIN_WORKTREE"
 
     if [[ "$MAIN_WORKTREE" != "$THIS_ROOT" ]]; then
         echo "Removing all but '$THIS_ROOT' because we're under that tree"
     fi
 
-    for worktree in $(git worktree list | awk 'NR > 1 { print $1 }'); do
+    OLDIFS=$IFS
+    IFS='\n'
+    for worktree in $(git worktree list | awk 'NR > 1 && NF-=2'); do
         if [[ "$worktree" != "$THIS_ROOT" ]]; then
-            git worktree remove $FORCE_REMOVE $worktree
+            git worktree remove $FORCE_REMOVE "$worktree"
         fi
     done
+    IFS=$OLDIFS
 elif [[ "$1" == "--rm" ]]; then
     shift
     FORCE_REMOVE=""
@@ -90,16 +93,23 @@ elif [[ "$1" == "--rm" ]]; then
 
     # Get the root of the git repo of the current directory
     THIS_ROOT=$(git rev-parse --show-toplevel)
-    # make sure that we're not in the main worktree -- can't delete that
-    MAIN_WORKTREE=$(git worktree list | head -1 | awk '{ print $1 }')
 
-    if [[ "$MAIN_WORKTREE" == "$THIS_ROOT" ]]; then
+    MAIN_WORKTREE=$(git worktree list | head -1 | awk 'NF-=2')
+    THIS_WORKTREE=$(git worktree list | grep "$1" | awk 'NF-=2')
+
+    # make sure that we're not in the main worktree -- can't delete that
+    if [[ "$MAIN_WORKTREE" == "$THIS_WORKTREE" ]]; then
         echo "Cannot remove main worktree; aborting"
         exit 1
     fi
 
+    if [[ "$THIS_WORKTREE" == "$THIS_ROOT" ]]; then
+        echo "Cannot remove worktree where we currently are; aborting"
+        exit 1
+    fi
+
     # delete the subtree
-    git worktree remove $FORCE_REMOVE "$THIS_ROOT"
+    git worktree remove $FORCE_REMOVE "$THIS_WORKTREE"
 else
     # store worktrees to a variable
     # check worktrees against list
