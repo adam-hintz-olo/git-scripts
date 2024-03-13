@@ -141,16 +141,17 @@ else
             exit 1
         fi
 
-        # make sure GIT_WT_TMP is set and exists (or fall back to $USERPROFILE (Windows) or $TMP or '/tmp')
+        # Try to get basedir from `git config wt.dir` (or fall back to $USERPROFILE (Windows) or $TMP or '/tmp')
         WT_BASEDIR=""
         # If we provided a profile for path, use it
         if [[ $# == 2 ]]; then
             WT_BASEDIR="$2"
         else
-            # Otherwise find it in an environment variable, where possible
-            if [[ "$GIT_WT_TMP" != "" ]]; then
+            # Otherwise find it in git config
+            GIT_WT_TMP=$(git config wt.dir)
+            if [[ $? == 0 ]]; then
                 if ! [[ -d "$GIT_WT_TMP" ]]; then
-                    echo "\$GIT_WT_TMP is set to a non-existent directory; aborting"
+                    echo "git config wt.dir is set to a non-existent directory; aborting"
                     exit 1
                 fi
                 WT_BASEDIR="$GIT_WT_TMP/$1"
