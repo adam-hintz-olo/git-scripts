@@ -63,14 +63,11 @@ elif [[ "$1" == "--rm-all" ]]; then
         echo "Removing all but '$THIS_ROOT' because we're under that tree"
     fi
 
-    OLDIFS=$IFS
-    IFS='\n'
     for worktree in $(git worktree list | awk 'NR > 1 && NF-=2'); do
         if [[ "$worktree" != "$THIS_ROOT" ]]; then
             git worktree remove $FORCE_REMOVE "$worktree"
         fi
     done
-    IFS=$OLDIFS
 elif [[ "$1" == "--rm" ]]; then
     shift
     FORCE_REMOVE=""
